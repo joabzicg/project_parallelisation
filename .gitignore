@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+
+src/*.exe
+src/*.o
+src/*.d
+src/*.dll
+src/bench_mpi_last*.txt
+src/bench_mpi_status.txt
+
+original_repo_unpack/
+original_repo-main.zip
+
+*.pyc
+*.pyo
+*.pyd

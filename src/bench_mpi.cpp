@@ -34,6 +34,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
+#include <sstream>
 #include <vector>
 
 #include <mpi.h>
@@ -43,7 +44,7 @@
 #include "pheronome.hpp"
 #include "rand_generator.hpp"
 
-int main(int argc, char** argv)
+static int bench_mpi_main(int argc, char** argv)
 {
     MPI_Init(&argc, &argv);
 
@@ -165,23 +166,35 @@ int main(int argc, char** argv)
     if (rank == 0) {
         double total_ms = g_ants + g_reduce + g_evap + g_sync + g_update;
         double N = static_cast<double>(max_iterations);
-        std::cout << "=== MPI benchmark: P=" << nproc
-                  << " over " << max_iterations << " iterations ===\n";
-          std::cout << "Total ants: " << nb_ants << "\n";
-          std::cout << "Grid dim  : " << dim_grid << " (seed=1024, not dim)\n";
-          std::cout << "Ants/rank : " << (end - start) << "\n";
-          std::cout << "Buf size  : " << buf_count << " doubles ("
-                  << (buf_count * 8.0 / (1024.0 * 1024.0)) << " MiB per allreduce)\n\n";
-        std::cout << "Phase           | ms/iter\n";
-        std::cout << "----------------|--------\n";
-        std::cout << "Ant movement    | " << g_ants   / N << "\n";
-        std::cout << "MPI merge (MAX) | " << g_reduce / N << "\n";
-        std::cout << "Evaporation     | " << g_evap   / N << "\n";
-        std::cout << "MPI sync (MIN)  | " << g_sync   / N << "\n";
-        std::cout << "Pheromone upd   | " << g_update / N << "\n";
-        std::cout << "Total compute   | " << total_ms / N << "\n";
+        std::ostringstream report;
+        report << "=== MPI benchmark: P=" << nproc
+               << " over " << max_iterations << " iterations ===\n";
+        report << "Total ants: " << nb_ants << "\n";
+        report << "Grid dim  : " << dim_grid << " (seed=1024, not dim)\n";
+        report << "Ants/rank : " << (end - start) << "\n";
+        report << "Buf size  : " << buf_count << " doubles ("
+               << (buf_count * 8.0 / (1024.0 * 1024.0)) << " MiB per allreduce)\n\n";
+        report << "Phase           | ms/iter\n";
+        report << "----------------|--------\n";
+        report << "Ant movement    | " << g_ants / N << "\n";
+        report << "MPI merge (MAX) | " << g_reduce / N << "\n";
+        report << "Evaporation     | " << g_evap / N << "\n";
+        report << "MPI sync (MIN)  | " << g_sync / N << "\n";
+        report << "Pheromone upd   | " << g_update / N << "\n";
+        report << "Total compute   | " << total_ms / N << "\n";
+
+        std::cout << report.str();
     }
 
     MPI_Finalize();
     return 0;
+}
+
+#ifdef main
+#undef main
+#endif
+
+int main(int argc, char** argv)
+{
+    return bench_mpi_main(argc, argv);
 }

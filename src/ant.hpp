@@ -2,6 +2,7 @@
 #ifndef _ANT_HPP_
 # define _ANT_HPP_
 # include <utility>
+# include <vector>
 # include "pheronome.hpp"
 # include "fractal_land.hpp"
 # include "basic_types.hpp"
@@ -13,7 +14,7 @@ public:
      * Une fourmi peut être dans deux états possibles : chargée ( elle porte de la nourriture ) ou non chargée
      */
     enum state { unloaded = 0, loaded = 1 };
-    ant(const position_t& pos, std::size_t seed ) : m_state(unloaded), m_position(pos)
+    ant(const position_t& pos, std::size_t seed ) : m_seed(seed), m_state(unloaded), m_position(pos)
     {} 
     ant(const ant& a) = default;
     ant( ant&& a ) = default;
@@ -28,6 +29,9 @@ public:
 
     void advance( pheronome& phen, const fractal_land& land,
                   const position_t& pos_food, const position_t& pos_nest, std::size_t& cpteur_food );
+    void advance_collect( const pheronome& phen, const fractal_land& land,
+                          const position_t& pos_food, const position_t& pos_nest,
+                          std::size_t& cpteur_food, std::vector< position_t >& marked_positions );
 
 private:
     static double m_eps; // Coefficient d'exploration commun à toutes les fourmis.

@@ -2,12 +2,43 @@
 #include <iostream>
 #include <random>
 #include <chrono>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 #include "fractal_land.hpp"
 #include "ant.hpp"
 #include "pheronome.hpp"
 # include "renderer.hpp"
 # include "window.hpp"
 # include "rand_generator.hpp"
+
+struct thread_marks_t {
+    explicit thread_marks_t(std::size_t cell_count)
+        : touched(cell_count, 0), values(cell_count, {{0., 0.}})
+    {
+        visited_positions.reserve(4096);
+        touched_indices.reserve(4096);
+    }
+
+    void reset_iteration()
+    {
+        for (std::size_t idx : touched_indices)
+            touched[idx] = 0;
+        touched_indices.clear();
+        visited_positions.clear();
+    }
+
+    std::vector<unsigned char> touched;
+    std::vector<pheronome::pheronome_t> values;
+    std::vector<position_t> visited_positions;
+    std::vector<std::size_t> touched_indices;
+};
 
 void advance_time( const fractal_land& land, pheronome& phen, 
                    const position_t& pos_nest, const position_t& pos_food,
@@ -69,6 +100,16 @@ int main(int nargs, char* argv[])
     bool not_food_in_nest = true;
     std::size_t it = 0;
 
+    int worker_count = 1;
+#ifdef _OPENMP
+    worker_count = omp_get_max_threads();
+#endif
+    const std::size_t cell_count = phen.raw_buffer_size() / 2;
+    std::vector<thread_marks_t> thread_marks;
+    thread_marks.reserve(static_cast<std::size_t>(worker_count));
+    for (int t = 0; t < worker_count; ++t)
+        thread_marks.emplace_back(cell_count);
+
     const std::size_t max_iterations = 500;
     double total_ants_ms = 0., total_evap_ms = 0., total_update_ms = 0., total_display_ms = 0.;
 
@@ -80,8 +121,46 @@ int main(int nargs, char* argv[])
         }
 
         auto t0 = std::chrono::high_resolution_clock::now();
+        std::size_t food_delta = 0;
+#ifdef _OPENMP
+        if (worker_count > 1) {
+#pragma omp parallel reduction(+ : food_delta)
+            {
+                const int thread_id = omp_get_thread_num();
+                thread_marks_t& local_marks = thread_marks[static_cast<std::size_t>(thread_id)];
+                local_marks.reset_iteration();
+                std::size_t local_food = 0;
+
+#pragma omp for schedule(static)
+                for (int i = 0; i < nb_ants; ++i) {
+                    ants[static_cast<std::size_t>(i)].advance_collect(
+                        phen, land, pos_food, pos_nest, local_food, local_marks.visited_positions);
+                }
+
+                for (const position_t& pos : local_marks.visited_positions) {
+                    const std::size_t idx = phen.raw_index(pos);
+                    if (local_marks.touched[idx] == 0) {
+                        local_marks.touched[idx] = 1;
+                        local_marks.touched_indices.push_back(idx);
+                        local_marks.values[idx] = phen.compute_mark(pos);
+                    }
+                }
+
+                food_delta += local_food;
+            }
+
+            for (const thread_marks_t& local_marks : thread_marks)
+                for (std::size_t idx : local_marks.touched_indices)
+                    phen.set_buffer_cell(idx, local_marks.values[idx]);
+        } else {
+            for ( size_t i = 0; i < ants.size(); ++i )
+                ants[i].advance(phen, land, pos_food, pos_nest, food_delta);
+        }
+#else
         for ( size_t i = 0; i < ants.size(); ++i )
-            ants[i].advance(phen, land, pos_food, pos_nest, food_quantity);
+            ants[i].advance(phen, land, pos_food, pos_nest, food_delta);
+#endif
+        food_quantity += food_delta;
         auto t1 = std::chrono::high_resolution_clock::now();
         phen.do_evaporation();
         auto t2 = std::chrono::high_resolution_clock::now();
@@ -114,3 +193,10 @@ int main(int nargs, char* argv[])
     SDL_Quit();
     return 0;
 }
+
+#ifdef _WIN32
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
+{
+    return main(__argc, __argv);
+}
+#endif
