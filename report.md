@@ -171,6 +171,18 @@ for (int iter = 0; iter < max_iterations; ++iter) {
 }
 ```
 
+### 5.1 Second MPI approach: proposed strategy
+
+The assignment also asks for a strategy for the second MPI approach, in which each process stores only one subdomain of the map instead of the full environment. This version was not implemented, but the proposed strategy is the following.
+
+First, the global grid would be partitioned into rectangular subdomains, one per process, with one layer of ghost cells around each local block. Pheromone values on the ghost cells would be exchanged with neighboring processes at each iteration so that local updates near the borders can still use the four-neighbor stencil.
+
+Second, each process would manage only the ants currently located inside its own subdomain. When an ant crosses a border, its full state would be packed and sent to the neighboring process that owns the destination subdomain. This migration step would occur after movement and before the next iteration begins.
+
+Third, food counting could be reduced globally with a small `MPI_Reduce`, while pheromone communication would remain local to neighboring processes rather than global over the full map. This would reduce the communication volume significantly compared with the replicated-map method.
+
+The main difficulty of this second approach is load balancing. Because the nest and food source create non-uniform traffic, some subdomains may contain many ants while others contain few. A practical implementation would therefore need careful border exchange, ant migration, and possibly a decomposition that keeps the hotspot regions reasonably balanced. This strategy was not implemented as code here; the optional bonus was therefore not pursued.
+
 ## 6. Conclusion
 
 The results show that the main bottleneck of the application lies in ant advancement. The data-layout reorganization produced only a small gain, which indicates that layout alone is not enough to transform this kernel into a strongly vectorizable one. The access pattern remains highly irregular, and the algorithm is still poorly suited to automatic vectorization.
